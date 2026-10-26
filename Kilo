@@ -1,0 +1,1805 @@
+-- Catware Anims (recovered from Prometheus-obfuscated LostCode.lua)
+-- Local variable names are reconstructed; all strings, numbers, IDs and URLs are exact.
+
+getgenv().GelatekReanimateConfig = getgenv().GelatekReanimateConfig or {
+    ["AnimationsDisabled"] = false,
+    ["R15ToR6"] = true,
+    ["PermanentDeath"] = false,
+}
+
+local Players = game:FindFirstChildOfClass("Players")
+local TestService = game:FindFirstChildOfClass("TestService")
+local RunService = game:FindFirstChildOfClass("RunService")
+local StarterGui = game:FindFirstChildOfClass("StarterGui")
+local TextChatService = game:GetService("TextChatService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = getgenv().GelatekReanimateConfig
+
+getgenv().TableOfEvents = {}
+
+local function Notify(Text)
+    StarterGui:SetCore("SendNotification", {
+        Title = "Catware Anims",
+        Text = Text,
+        Icon = "rbxassetid://17565552532",
+        Duration = 10,
+    })
+end
+
+task.spawn(function()
+    if not game:IsLoaded() then
+        game.Loaded:Wait()
+    end
+
+    -- Build an R6 rig if Gelatek Reanimate hasn't left one in TestService
+    if not TestService:FindFirstChild("GelatekReanimateData") then
+        local Data = Instance.new("Folder")
+        Data.Name = "GelatekReanimateData"
+        local Model = Instance.new("Model")
+
+        local Parts = {}
+        for i = 1, 4 do
+            local Limb = Instance.new("Part")
+            Limb.Size = Vector3.new(1, 2, 1)
+            Limb.BottomSurface = Enum.SurfaceType.Smooth
+            Limb.FormFactor = Enum.FormFactor.Symmetric
+            Limb.Locked = true
+            Limb.CanCollide = false
+            Limb.Parent = Model
+            Parts[i] = Limb
+        end
+        local RightArm, LeftArm, RightLeg, LeftLeg = Parts[1], Parts[2], Parts[3], Parts[4]
+        RightArm.Name = "Right Arm"
+        LeftArm.Name = "Left Arm"
+        RightLeg.Name = "Right Leg"
+        LeftLeg.Name = "Left Leg"
+
+        local Head = Instance.new("Part")
+        Head.Size = Vector3.new(2, 1, 1)
+        Head.TopSurface = Enum.SurfaceType.Smooth
+        Head.FormFactor = Enum.FormFactor.Symmetric
+        Head.Locked = true
+        Head.CanCollide = false
+        Head.Name = "Head"
+        Head.Parent = Model
+
+        local Torso = Instance.new("Part")
+        Torso.Size = Vector3.new(2, 2, 1)
+        Torso.BottomSurface = Enum.SurfaceType.Smooth
+        Torso.FormFactor = Enum.FormFactor.Symmetric
+        Torso.Locked = true
+        Torso.CanCollide = false
+        Torso.Name = "Torso"
+        Torso.Parent = Model
+
+        local Root = Torso:Clone()
+        Root.Transparency = 1
+        Root.Name = "HumanoidRootPart"
+        Root.Parent = Model
+
+        local function Joint(Name, Part0, Part1, C0, C1)
+            local Motor = Instance.new("Motor6D")
+            Motor.Name = Name
+            Motor.Part0 = Part0
+            Motor.Part1 = Part1
+            Motor.C0 = C0
+            Motor.C1 = C1
+            Motor.Parent = Part0
+        end
+        Joint("Neck", Torso, Head, CFrame.new(0, 1, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0), CFrame.new(0, -0.5, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0))
+        Joint("RootJoint", Root, Torso, CFrame.new(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0), CFrame.new(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0))
+        Joint("Right Shoulder", Torso, RightArm, CFrame.new(1, 0.5, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0), CFrame.new(-0.5, 0.5, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0))
+        Joint("Left Shoulder", Torso, LeftArm, CFrame.new(-1, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0), CFrame.new(0.5, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0))
+        Joint("Right Hip", Torso, RightLeg, CFrame.new(1, -1, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0), CFrame.new(0.5, 1, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0))
+        Joint("Left Hip", Torso, LeftLeg, CFrame.new(-1, -1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0), CFrame.new(-0.5, 1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0))
+
+        local RigHumanoid = Instance.new("Humanoid")
+        RigHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        RigHumanoid.Parent = Model
+        Instance.new("Animator", RigHumanoid)
+
+        Model.Name = "Rig"
+        Model.PrimaryPart = Root
+        Model.Parent = Data
+        Data.Parent = TestService
+    end
+
+    local Character = Players.LocalPlayer.Character
+    local HRP = Character:WaitForChild("HumanoidRootPart")
+
+    local Rig = TestService.GelatekReanimateData:FindFirstChild("Rig"):Clone()
+    Rig.Name = "GelatekReanimate"
+    for _, v in ipairs(Rig:GetDescendants()) do
+        if v:IsA("BasePart") or v:IsA("Decal") then
+            v.Transparency = 1
+        end
+    end
+
+    -- Velocity based tail physics (from TailPhysics.lua). Tail asset 6472198409 is the tail already equipped.
+    local TAIL_ID = 6472198409
+    local YAW_PER_SPEED = 0.04 -- moving sideways -> tail swings to the opposite side
+    local PITCH_PER_SPEED = 0.025 -- moving forward/back -> tail lifts/drops
+    local LIFT_PER_SPEED = 0.02 -- moving up/down -> tail drops/lifts
+    local TURN_GAIN = 0.06 -- turning drags the tail the other way
+    local MAX_YAW = 1.0
+    local MAX_PITCH = 0.8
+    local STIFFNESS = 30
+    local DAMPING = 5
+    local IDLE_SPEED = 3 -- studs/second under which the tail counts as idle
+    local WAG_ANGLE = math.rad(8)
+    local WAG_SPEED = 3.5 -- radians/second
+
+    local function FindTailAccessory()
+        local Accessories = {}
+        for _, v in ipairs(Character:GetChildren()) do
+            if v:IsA("Accessory") and v:FindFirstChild("Handle") then
+                table.insert(Accessories, v)
+            end
+        end
+
+        local Ok, Info = pcall(function()
+            return game:GetService("MarketplaceService"):GetProductInfo(TAIL_ID, Enum.InfoType.Asset)
+        end)
+        if Ok and Info and Info.Name then
+            local Want = Info.Name:lower()
+            for _, Acc in ipairs(Accessories) do
+                if Acc.Name:lower() == Want then
+                    return Acc
+                end
+            end
+            for _, Acc in ipairs(Accessories) do
+                local Name = Acc.Name:lower()
+                if Name:find(Want, 1, true) or Want:find(Name, 1, true) then
+                    return Acc
+                end
+            end
+        end
+
+        for _, Acc in ipairs(Accessories) do
+            local Att = Acc.Handle:FindFirstChildOfClass("Attachment")
+            if Att and (Att.Name:find("Back") or Att.Name:find("Waist")) then
+                return Acc
+            end
+        end
+    end
+    local TailAccessory = FindTailAccessory()
+
+    -- Hats: weld each accessory handle to the matching rig limb with AlignPosition/AlignOrientation
+    local RigHead = Rig:FindFirstChild("Head")
+    local Hats = {}
+    for _, Accessory in ipairs(Character:GetChildren()) do
+        if Accessory:IsA("Accessory") and Accessory:FindFirstChild("Handle") then
+            local Handle = Accessory.Handle
+            local Attachment = Handle:FindFirstChildOfClass("Attachment")
+            local Offset = CFrame.new()
+            local Target
+
+            -- Accessory attachments are named e.g. "HatAttachment"/"HairAttachment", so map them to rig limbs
+            local AttName = Attachment and Attachment.Name or "HatAttachment"
+            local TargetName = "Head"
+            if AttName:find("Shoulder") then
+                TargetName = AttName:find("Left") and "Left Arm" or "Right Arm"
+            elseif AttName:find("Body") or AttName:find("Waist") or AttName:find("Neck") or AttName:find("Collar") or AttName:find("Root") then
+                TargetName = "Torso"
+            elseif AttName:find("Hip") or AttName:find("Foot") then
+                TargetName = AttName:find("Left") and "Left Leg" or "Right Leg"
+            end
+            Target = Rig:FindFirstChild(TargetName) or RigHead
+
+            -- Keep the handle exactly where it currently sits relative to the matching character part
+            local CharPart = Character:FindFirstChild(TargetName) or Character:FindFirstChild("Head")
+            if CharPart then
+                Offset = CharPart.CFrame:ToObjectSpace(Handle.CFrame)
+            elseif Attachment then
+                Offset = Attachment.CFrame:Inverse()
+            end
+
+            if Target then
+                local Att0 = Instance.new("Attachment", Handle)
+                Att0.Name = "ReanimateAtt0"
+                Att0.CFrame = Offset:Inverse()
+
+                local Att1 = Instance.new("Attachment", Target)
+                Att1.Name = "ReanimateAtt1"
+
+                local AlignPos = Instance.new("AlignPosition", Handle)
+                AlignPos.Attachment0 = Att0
+                AlignPos.Attachment1 = Att1
+                AlignPos.MaxForce = 999999999
+                AlignPos.MaxVelocity = 999999999
+                AlignPos.Responsiveness = 200
+                AlignPos.ReactionForceEnabled = false
+
+                local AlignOri = Instance.new("AlignOrientation", Handle)
+                AlignOri.Attachment0 = Att0
+                AlignOri.Attachment1 = Att1
+                AlignOri.MaxTorque = 999999999
+                AlignOri.Responsiveness = 200
+                AlignOri.ReactionTorqueEnabled = false
+
+                local Hat = { Handle = Handle, Part = Target, Offset = Offset }
+                if Accessory == TailAccessory then
+                    -- The tail is driven by the spring below, so the aligns must not fight it
+                    AlignPos:Destroy()
+                    AlignOri:Destroy()
+                    local BodyAtt = CharPart and CharPart:FindFirstChild(AttName)
+                    Hat.Tail = true
+                    Hat.Pivot = BodyAtt and BodyAtt:IsA("Attachment") and BodyAtt.CFrame.Position or Offset.Position
+                    Handle.Massless = true
+                    Handle.CanTouch = false
+                    Handle.CanQuery = false
+                end
+                table.insert(Hats, Hat)
+            end
+        end
+    end
+
+    Rig.Parent = workspace
+    Rig.HumanoidRootPart.CFrame = HRP.CFrame
+    local Humanoid = Rig:FindFirstChildOfClass("Humanoid")
+    Character.Parent = Rig
+
+    local Limbs = {
+        ["Head"] = { Rig:FindFirstChild("Head"), CFrame.new() },
+        ["Torso"] = { Rig:FindFirstChild("Torso"), CFrame.new() },
+        ["Right Arm"] = { Rig:FindFirstChild("Right Arm"), CFrame.new() },
+        ["Left Arm"] = { Rig:FindFirstChild("Left Arm"), CFrame.new() },
+        ["Right Leg"] = { Rig:FindFirstChild("Right Leg"), CFrame.new() },
+        ["Left Leg"] = { Rig:FindFirstChild("Left Leg"), CFrame.new() },
+    }
+
+    RunService.PreSimulation:Connect(function()
+        for _, v in pairs(Character:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.CanCollide = false
+                v.AssemblyLinearVelocity = Vector3.new(0, -25.8, 0)
+            end
+        end
+    end)
+
+    local Yaw = { pos = 0, vel = 0 }
+    local Pitch = { pos = 0, vel = 0 }
+    local Idle = 1
+    local TailTime = 0
+
+    local function Spring(s, target, dt)
+        local acc = (target - s.pos) * STIFFNESS - s.vel * DAMPING
+        s.vel += acc * dt
+        s.pos += s.vel * dt
+    end
+
+    -- Returns the tail's swung CFrame from the rig root's velocity
+    local function TailCFrame(Hat, dt)
+        local RigRoot = Rig.HumanoidRootPart
+        local RootCF = RigRoot.CFrame
+        local RootRot = RootCF.Rotation
+
+        -- Velocity in the root's own space: X = right, Y = up, Z = back
+        local Vel = RigRoot.AssemblyLinearVelocity
+        local LocalVel = RootCF:VectorToObjectSpace(Vel)
+        local Turn = RigRoot.AssemblyAngularVelocity.Y
+
+        -- Moving left (-X) swings the tail right (+X), and so on for every direction
+        local YawTarget = math.clamp(-LocalVel.X * YAW_PER_SPEED - Turn * TURN_GAIN, -MAX_YAW, MAX_YAW)
+        local PitchTarget = math.clamp(LocalVel.Z * PITCH_PER_SPEED + LocalVel.Y * LIFT_PER_SPEED, -MAX_PITCH, MAX_PITCH)
+        Spring(Yaw, YawTarget, dt)
+        Spring(Pitch, PitchTarget, dt)
+
+        -- Slight wag, fading in when standing still and out when moving
+        local IdleTarget = 1 - math.clamp(Vel.Magnitude / IDLE_SPEED, 0, 1)
+        Idle += (IdleTarget - Idle) * math.min(1, dt * 4)
+        local Wag = math.sin(TailTime * WAG_SPEED) * WAG_ANGLE * Idle
+
+        local Swing = RootRot * CFrame.Angles(Pitch.pos, Yaw.pos + Wag, 0) * RootRot:Inverse()
+        local Base = Hat.Part.CFrame
+        local Pivot = Base:PointToWorldSpace(Hat.Pivot)
+        return CFrame.new(Pivot) * Swing * CFrame.new(-Pivot) * (Base * Hat.Offset)
+    end
+
+    RunService.PostSimulation:Connect(function(dt)
+        -- A lag spike would otherwise turn into one huge step
+        dt = math.min(dt, 1 / 20)
+        TailTime += dt
+        for Name, Data in pairs(Limbs) do
+            if Character:FindFirstChild(Name) then
+                local Part = Character:FindFirstChild(Name)
+                if Data[1] then
+                    Part.CFrame = Data[1].CFrame * Data[2]
+                end
+            end
+        end
+        for _, Hat in ipairs(Hats) do
+            if Hat.Tail then
+                Hat.Handle.CFrame = TailCFrame(Hat, dt)
+                Hat.Handle.AssemblyAngularVelocity = Vector3.zero
+            else
+                Hat.Handle.CFrame = Hat.Part.CFrame * Hat.Offset
+            end
+        end
+        local RigTorso = Rig:FindFirstChild("Torso")
+        local RootOffset = CFrame.new(0, 0.02, 0)
+        if RigTorso then
+            HRP.CFrame = RigTorso.CFrame * RootOffset
+        end
+    end)
+
+    for _, v in ipairs(Character:GetDescendants()) do
+        if v:IsA("Motor6D") or v:IsA("Weld") or v:IsA("WeldConstraint") then
+            v:Destroy()
+        end
+    end
+
+    Players.LocalPlayer.Character = Rig
+    workspace.CurrentCamera.CameraSubject = Humanoid
+
+    task.spawn(function()
+        if not isfolder("Catware Musics") then
+            makefolder("Catware Musics")
+        end
+
+        getgenv().Animator6DLoadedPro = nil
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/gObl00x/Stuff/refs/heads/main/Animator6D.lua"))()
+
+        -- Camera follows the rig's head
+        local Head = Rig:FindFirstChild("Head")
+        RunService.RenderStepped:Connect(function(dt)
+            Humanoid.CameraOffset = Humanoid.CameraOffset:Lerp(
+                (Rig.HumanoidRootPart.CFrame * CFrame.new(0, 1.5, 0)):PointToObjectSpace(Head.Position),
+                math.clamp(0.15 * dt * 60, 0, 1)
+            )
+        end)
+
+        -- Default movement animations
+        local RunPack = game:GetObjects("rbxassetid://11405076389")[1].R6["Run + Walk + Jump + Fall R6"]:FindFirstChild("AnimSaves")
+        local IdleAnim = game:GetObjects("rbxassetid://16600175853")[1].AnimSaves:FindFirstChild("Idle 7")
+        local WalkAnim = RunPack:FindFirstChild("Walk V4")
+        local JumpAnim = RunPack:FindFirstChild("Jump V2")
+        local SitAnim = game:GetObjects("rbxassetid://12452064144")[1]["R6 Animation Rig"].AnimSaves:FindFirstChild("SITTING")
+
+        local Dancing = false
+        local CurrentAnim
+        RunService.RenderStepped:Connect(function()
+            if Dancing then
+                return
+            end
+            local Moving = Humanoid.MoveDirection.Magnitude > 0
+            local InAir = Humanoid.FloorMaterial == Enum.Material.Air
+
+            local Anim
+            if Humanoid.Sit or Humanoid:GetState() == Enum.HumanoidStateType.Seated then
+                Anim = SitAnim
+            elseif InAir then
+                Anim = JumpAnim
+            elseif Moving then
+                Anim = WalkAnim
+            else
+                Anim = IdleAnim
+            end
+
+            if Anim ~= CurrentAnim then
+                CurrentAnim = Anim
+                getgenv().Animator6DStop()
+                getgenv().Animator6D(Anim, 1, true)
+            end
+        end)
+
+
+        -- Smug
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Smug"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Dancing.mp3") then
+                writefile("Catware Musics/Dancing.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Dancing.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Smug_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 10
+                getgenv().Animator6D(6512463532, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Dancing.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+
+        -- Rat Dance
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Rat Dance"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/rat.mp3") then
+                writefile("Catware Musics/rat.mp3", game:HttpGet("https://github.com/Nitro-GT/music/raw/refs/heads/main/rat.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Rat Dance_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                getgenv().Animator6D(117971041844490, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/rat.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Asset_8903870018 = game:GetObjects("rbxassetid://8903870018")
+
+        -- Kazotsky Kick
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Kazotsky Kick"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Kazotsky Kick.mp3") then
+                writefile("Catware Musics/Kazotsky Kick.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Kazotsky%20Kick.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Kazotsky Kick_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 6
+                getgenv().Animator6D(Asset_8903870018[1].AnimSaves["Kazotsky Kick"], 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Kazotsky Kick.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+
+        -- Boppin
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Boppin"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Boppin.mp3") then
+                writefile("Catware Musics/Boppin.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Boppin.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Boppin_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                getgenv().Animator6D(15710560047, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Boppin.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+
+        -- Moongazer
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Moongazer"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Moongazer.mp3") then
+                writefile("Catware Musics/Moongazer.mp3", game:HttpGet("https://github.com/Nitro-GT/music/raw/refs/heads/main/Moongazer.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Moongazer_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                getgenv().Animator6D(80947480089411, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Moongazer.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+
+        -- Mannrobics
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Mannrobics"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Mannrobics.mp3") then
+                writefile("Catware Musics/Mannrobics.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Mannrobics.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Mannrobics_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                getgenv().Animator6D(3678753938, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Mannrobics.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Asset_9382474754 = game:GetObjects("rbxassetid://9382474754")
+        local Anim_Reanimated = Asset_9382474754[1].AnimSaves:FindFirstChild("Reanimated")
+
+        -- Reanimated
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Reanimated"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Reanimated.mp3") then
+                writefile("Catware Musics/Reanimated.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Reanimated.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Reanimated_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                getgenv().Animator6D(Anim_Reanimated, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Reanimated.mp3")
+                Sound.Looped = true
+                Sound:Play()
+                Sound.TimePosition = 1
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+
+        -- Goopie
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Goopie"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Goopie.mp3") then
+                writefile("Catware Musics/Goopie.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Goopie.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Goopie_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                getgenv().Animator6D(13096880262, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Goopie.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Asset_93309532260574 = game:GetObjects("rbxassetid://93309532260574")
+
+        -- Fresh
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Fresh"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Fresh.mp3") then
+                writefile("Catware Musics/Fresh.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Fresh.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Fresh_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 5
+                getgenv().Animator6D(Asset_93309532260574[1].Emotes.AnimSaves.Fresh, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Fresh.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Asset_93309532260574_2 = game:GetObjects("rbxassetid://93309532260574")
+
+        -- SequênciaDeVapor
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "SequênciaDeVapor"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/SequenciaDeVapor.mp3") then
+                writefile("Catware Musics/SequenciaDeVapor.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/SequenciaDeVapor.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "SequênciaDeVapor_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 0
+                getgenv().Animator6D(Asset_93309532260574_2[1].Emotes.AnimSaves["Sea Santis"], 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/SequenciaDeVapor.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Asset_8903870018_2 = game:GetObjects("rbxassetid://8903870018")
+
+        -- Take The L
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Take The L"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/L Emote.mp3") then
+                writefile("Catware Musics/L Emote.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/L%20Emote.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Take The L_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 6.5
+                getgenv().Animator6D(Asset_8903870018_2[1].AnimSaves["Take The L"], 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/L Emote.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Asset_17767173972 = game:GetObjects("rbxassetid://17767173972")
+        local Anim_ItSASecret = Asset_17767173972[1].AnimSaves:FindFirstChild("StockDance One")
+
+        -- It's a Secret
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "It's a Secret"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/secret.mp3") then
+                writefile("Catware Musics/secret.mp3", game:HttpGet("https://github.com/Nitro-GT/music/raw/refs/heads/main/secret.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "It's a Secret_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 4
+                getgenv().Animator6D(Anim_ItSASecret, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/secret.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Asset_6929983041 = game:GetObjects("rbxassetid://6929983041")
+        local Anim_Caramelldansen = Asset_6929983041[1].AnimSaves:FindFirstChild("Imported Animation Clip")
+
+        -- Caramelldansen
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Caramelldansen"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/caramell.mp3") then
+                writefile("Catware Musics/caramell.mp3", game:HttpGet("https://github.com/Nitro-GT/music/raw/refs/heads/main/caramell.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Caramelldansen_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 2.5
+                getgenv().Animator6D(Anim_Caramelldansen, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/caramell.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Asset_11512762330 = game:GetObjects("rbxassetid://11512762330")
+        local Anim_SpookyMonth = Asset_11512762330[1].AnimSaves:FindFirstChild("Pump Idle")
+
+        -- Spooky Month
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Spooky Month"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Spooky Month.mp3") then
+                writefile("Catware Musics/Spooky Month.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Spooky%20Month.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Spooky Month_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 2.5
+                getgenv().Animator6D(Anim_SpookyMonth, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Spooky Month.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Asset_16621824519 = game:GetObjects("rbxassetid://16621824519")
+        local Anim_BoogieDown = Asset_16621824519[1].AnimSaves:FindFirstChild("Boogie Down")
+
+        -- Boogie Down
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Boogie Down"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/boogie.mp3") then
+                writefile("Catware Musics/boogie.mp3", game:HttpGet("https://github.com/sz1o/fefewfewfewewfewfwenumber/raw/main/Fortnite_-_Boogie_Down_Emote_Official_Audio_KLICKAUD.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Boogie Down_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 1.5
+                getgenv().Animator6D(Anim_BoogieDown, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/boogie.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Asset_6925949000 = game:GetObjects("rbxassetid://6925949000")
+        local Anim_MioHondaStep = Asset_6925949000[1].AnimSaves:FindFirstChild("Imported Animation Clip")
+
+        -- Mio Honda Step
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Mio Honda Step"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Step.mp3") then
+                writefile("Catware Musics/Step.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Step.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Mio Honda Step_Sound"
+            Sound.Volume = 0.8
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 1.8
+                getgenv().Animator6D(Anim_MioHondaStep, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Step.mp3")
+                Sound.Looped = true
+                Sound:Play()
+                Sound.TimePosition = 2
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Asset_5337215274 = game:GetObjects("rbxassetid://5337215274")
+        local Anim_FrightFunk = Asset_5337215274[1].AnimSaves:FindFirstChild("Power Dance")
+
+        -- Fright Funk
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Fright Funk"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/frightfunk.mp3") then
+                writefile("Catware Musics/frightfunk.mp3", game:HttpGet("https://github.com/Nitro-GT/music/raw/refs/heads/main/frightfunk.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Fright Funk_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 10
+                getgenv().Animator6D(Anim_FrightFunk, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/frightfunk.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local AnimPack = game:GetObjects("rbxassetid://75515993534839")
+        local Anim_TheHero = AnimPack[1].AnimSaves:WaitForChild("the hero")
+
+        -- The Hero
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "The Hero"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/The Hero.mp3") then
+                writefile("Catware Musics/The Hero.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/The%20Hero.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "The Hero_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 13
+                getgenv().Animator6D(Anim_TheHero, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/The Hero.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_Two = AnimPack[1].AnimSaves:WaitForChild("Two")
+
+        -- Two
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Two"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Two.mp3") then
+                writefile("Catware Musics/Two.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Two.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Two_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 10
+                getgenv().Animator6D(Anim_Two, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Two.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_Breakdance = AnimPack[1].AnimSaves:WaitForChild("KeyframeSequence")
+
+        -- Breakdance
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Breakdance"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Breakdance.mp3") then
+                writefile("Catware Musics/Breakdance.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Breakdance.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Breakdance_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 13
+                getgenv().Animator6D(Anim_Breakdance, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Breakdance.mp3")
+                Sound.Looped = true
+                Sound:Play()
+                Sound.TimePosition = 1
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_RakutenLemonade = AnimPack[1].AnimSaves:WaitForChild("rakuten")
+
+        -- Rakuten Lemonade
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Rakuten Lemonade"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Rakuten Lemonade.mp3") then
+                writefile("Catware Musics/Rakuten Lemonade.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Rakuten%20Lemonade.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Rakuten Lemonade_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 13
+                getgenv().Animator6D(Anim_RakutenLemonade, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Rakuten Lemonade.mp3")
+                Sound.Looped = true
+                Sound:Play()
+                Sound.TimePosition = 1
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_PrinceOfEgypt = AnimPack[1].AnimSaves:WaitForChild("Egypt R6")
+
+        -- Prince of Egypt
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Prince of Egypt"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Prince Of Egypt.mp3") then
+                writefile("Catware Musics/Prince Of Egypt.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Prince%20Of%20Egypt.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Prince of Egypt_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 18
+                getgenv().Animator6D(Anim_PrinceOfEgypt, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Prince Of Egypt.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_Popipo = AnimPack[1].AnimSaves:WaitForChild("PoPiPo Short")
+
+        -- PoPiPo
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "PoPiPo"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/PoPiPo.mp3") then
+                writefile("Catware Musics/PoPiPo.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/PoPiPo.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "PoPiPo_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 16
+                getgenv().Animator6D(Anim_Popipo, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/PoPiPo.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_Monoko = AnimPack[1].AnimSaves:WaitForChild("monoko working")
+
+        -- Monoko
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Monoko"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Monoko.mp3") then
+                writefile("Catware Musics/Monoko.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/Monoko.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Monoko_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 16
+                getgenv().Animator6D(Anim_Monoko, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Monoko.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_InsideInMyHead = AnimPack[1].AnimSaves:WaitForChild("IN MY HEAD! - SUPXR")
+
+        -- Inside In My Head
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Inside In My Head"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/In My Head.mp3") then
+                writefile("Catware Musics/In My Head.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/In%20My%20Head.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Inside In My Head_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 13
+                getgenv().Animator6D(Anim_InsideInMyHead, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/In My Head.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_LemonMelonCookie = AnimPack[1].AnimSaves:WaitForChild("Lemon Melon Cookie")
+
+        -- Lemon Melon Cookie
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Lemon Melon Cookie"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/LMC.mp3") then
+                writefile("Catware Musics/LMC.mp3", game:HttpGet("https://github.com/gObl00x/Epik-Musics/raw/refs/heads/main/LMC.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Lemon Melon Cookie_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 16
+                getgenv().Animator6D(Anim_LemonMelonCookie, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/LMC.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_Brickbattle = AnimPack[1].AnimSaves:WaitForChild("Brickbattler")
+
+        -- Brickbattle
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Brickbattle"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Brickbattler.mp3") then
+                writefile("Catware Musics/Brickbattler.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/Brickbattler.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Brickbattle_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 13
+                getgenv().Animator6D(Anim_Brickbattle, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Brickbattler.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_AronaDance = AnimPack[1].AnimSaves:WaitForChild("The One Arona Dance")
+
+        -- Arona Dance
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Arona Dance"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/AronaDance.mp3") then
+                writefile("Catware Musics/AronaDance.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/AronaDance.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Arona Dance_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 16
+                getgenv().Animator6D(Anim_AronaDance, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/AronaDance.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_C14 = AnimPack[1].AnimSaves:WaitForChild("ClassC14")
+
+        -- C14
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "C14"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/C14.mp3") then
+                writefile("Catware Musics/C14.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/C14.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "C14_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 16
+                getgenv().Animator6D(Anim_C14, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/C14.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_Sit = AnimPack[1].AnimSaves:WaitForChild("stunidle")
+
+        -- Sit
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Sit"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Calm.mp3") then
+                writefile("Catware Musics/Calm.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/Calm.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Sit_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 3
+                getgenv().Animator6D(Anim_Sit, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Calm.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_Epical = AnimPack[1].AnimSaves:WaitForChild("Epical")
+
+        -- Epical
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Epical"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Epical.mp3") then
+                writefile("Catware Musics/Epical.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/Epical.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Epical_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 16
+                getgenv().Animator6D(Anim_Epical, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Epical.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_InternetYamero = AnimPack[1].AnimSaves:WaitForChild("internet yamero")
+
+        -- Internet Yamero
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Internet Yamero"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Internet Yamero.mp3") then
+                writefile("Catware Musics/Internet Yamero.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/InternetYamero.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Internet Yamero_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 10
+                getgenv().Animator6D(Anim_InternetYamero, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Internet Yamero.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_LiarDance = AnimPack[1].AnimSaves:WaitForChild("LIARDANCER4")
+
+        -- Liar Dance
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Liar Dance"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/LiarDance.mp3") then
+                writefile("Catware Musics/LiarDance.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/LiarDance.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Liar Dance_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 6
+                getgenv().Animator6D(Anim_LiarDance, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/LiarDance.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_Limbo = AnimPack[1].AnimSaves:WaitForChild("limbo")
+
+        -- Limbo
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Limbo"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Limbo.mp3") then
+                writefile("Catware Musics/Limbo.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/Limbo.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Limbo_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 13
+                getgenv().Animator6D(Anim_Limbo, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Limbo.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_ShucksMidCustomscene = AnimPack[1].AnimSaves:WaitForChild("MainCutsene(Serve me on a silver platter)")
+
+        -- Shucks Mid Customscene
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Shucks Mid Customscene"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/MID SHUCKS SPANISH.mp3") then
+                writefile("Catware Musics/MID SHUCKS SPANISH.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/MID%20SHUCKS%20SPANISH.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Shucks Mid Customscene_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 6
+                getgenv().Animator6D(Anim_ShucksMidCustomscene, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/MID SHUCKS SPANISH.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_Shucks = AnimPack[1].AnimSaves:WaitForChild("aw shucks r6")
+
+        -- Shucks
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Shucks"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Shucks.mp3") then
+                writefile("Catware Musics/Shucks.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/Shucks.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Shucks_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 3
+                getgenv().Animator6D(Anim_Shucks, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Shucks.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_JunFightWithAParalysisDemon = AnimPack[1].AnimSaves:WaitForChild("iDK anymore")
+
+        -- Jun fight with a paralysis demon
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Jun fight with a paralysis demon"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Shinji's and juns Final battle Song.mp3") then
+                writefile("Catware Musics/Shinji's and juns Final battle Song.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/Shinji's%20and%20juns%20Final%20battle%20Song.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Jun fight with a paralysis demon_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 0
+                getgenv().Animator6D(Anim_JunFightWithAParalysisDemon, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Shinji's and juns Final battle Song.mp3")
+                Sound.Looped = true
+                Sound:Play()
+                Sound.TimePosition = 3
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_PanicInStatic = AnimPack[1].AnimSaves:WaitForChild("Imported Animation Clip")
+
+        -- Panic, In Static!
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Panic, In Static!"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Static2.mp3") then
+                writefile("Catware Musics/Static2.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/Static2.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Panic, In Static!_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 13
+                getgenv().Animator6D(Anim_PanicInStatic, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Static2.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_Subterfuge = AnimPack[1].AnimSaves:WaitForChild("sub")
+
+        -- Subterfuge
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "Subterfuge"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Subturefuge.mp3") then
+                writefile("Catware Musics/Subturefuge.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/Subturefuge.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "Subterfuge_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 20
+                getgenv().Animator6D(Anim_Subterfuge, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Subturefuge.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_IGotABrandNewSaxaphone = AnimPack[1].AnimSaves:WaitForChild("Automatic Save")
+
+        -- I got a brand new saxaphone
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "I got a brand new saxaphone"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/SAXAPHONE.mp3") then
+                writefile("Catware Musics/SAXAPHONE.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/SAXAPHONE.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "I got a brand new saxaphone_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 6
+                getgenv().Animator6D(Anim_IGotABrandNewSaxaphone, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/SAXAPHONE.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_Eggroll = AnimPack[1].AnimSaves:WaitForChild("Eggrolled")
+
+        -- EggRoll
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "EggRoll"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/Eggroll.mp3") then
+                writefile("Catware Musics/Eggroll.mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/Eggroll.mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "EggRoll_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 18
+                getgenv().Animator6D(Anim_Eggroll, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/Eggroll.mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        local Anim_SoMuchMoreIThink = AnimPack[1].AnimSaves:WaitForChild("So Much More")
+
+        -- So much more i think
+        do
+            local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+            Tool.Name = "So much more i think"
+            Tool.RequiresHandle = false
+            if not isfile("Catware Musics/anybodycanfindlove(except you.).mp3") then
+                writefile("Catware Musics/anybodycanfindlove(except you.).mp3", game:HttpGet("https://github.com/EpicFire8/Music/raw/refs/heads/main/anybodycanfindlove(except you.).mp3"))
+            end
+            local Sound = Instance.new("Sound")
+            Sound.Name = "So much more i think_Sound"
+            Sound.Volume = 2.5
+            Tool.Equipped:Connect(function()
+                Dancing = true
+                Humanoid.WalkSpeed = 13
+                getgenv().Animator6D(Anim_SoMuchMoreIThink, 1, true)
+                Sound.Parent = Rig
+                Sound.SoundId = getcustomasset("Catware Musics/anybodycanfindlove(except you.).mp3")
+                Sound.Looped = true
+                Sound:Play()
+            end)
+            Tool.Unequipped:Connect(function()
+                Dancing = false
+                getgenv().Animator6DStop()
+                Humanoid.WalkSpeed = 16
+                Sound:Stop()
+                Sound.Parent = nil
+            end)
+        end
+
+        -- Lay down / Lay down 2 (ported from AnimalFE, no music): the rig joints are driven directly instead of playing an animation
+        do
+            -- Joints are searched anywhere in the rig, since a Gelatek rig may parent them differently
+            local function FindJoint(Name)
+                for _, v in ipairs(Rig:GetDescendants()) do
+                    if v:IsA("Motor6D") and v.Name == Name and not v:IsDescendantOf(Character) then
+                        return v
+                    end
+                end
+            end
+            local Joints = {
+                RootJoint = FindJoint("RootJoint"),
+                Neck = FindJoint("Neck"),
+                RightShoulder = FindJoint("Right Shoulder"),
+                LeftShoulder = FindJoint("Left Shoulder"),
+                RightHip = FindJoint("Right Hip"),
+                LeftHip = FindJoint("Left Hip"),
+            }
+            local Default = {}
+            for Name, Joint in pairs(Joints) do
+                Default[Name] = Joint.C0
+            end
+
+            local cf, angles = CFrame.new, CFrame.Angles
+            local rad = math.rad
+            local sin = math.sin
+            local ArmIn = 0.05
+
+            -- Lay down 2 is built from poses of the AnimalFE pose library (delta rotations in torso space)
+            local ROOT_N = angles(-math.pi / 2, 0, math.pi)
+            local RYp = angles(0, math.pi / 2, 0)
+            local RYn = angles(0, -math.pi / 2, 0)
+            local function RootC(p, d) return cf(p) * d * ROOT_N end
+            local function ArmC(side, pitch, out)
+                local rot = angles(pitch, 0, 0) * angles(0, 0, side * out)
+                if side == 1 then
+                    return cf(1 - ArmIn, 0.5, 0) * rot * RYp
+                end
+                return cf(-1 + ArmIn, 0.5, 0) * rot * RYn
+            end
+            local function LegC(side, d)
+                if side == 1 then
+                    return cf(1, -1, 0) * d * RYp
+                end
+                return cf(-1, -1, 0) * d * RYn
+            end
+
+            local Poses = {
+                -- Z: lay down
+                ["Lay down"] = function(s)
+                    return {
+                        LeftShoulder = cf(-1 + ArmIn, 0.75, -0.2) * angles(2.705260340591211 - 0.08726646259971647 * sin((s + 0.1) * 2), -2.792526803190927, -0.6981317007977318),
+                        RightShoulder = cf(1 - ArmIn, 0.75, -0.2) * angles(2.705260340591211 - 0.08726646259971647 * sin((s + 0.1) * 2), 2.792526803190927, 0.6981317007977318),
+                        Neck = cf(0, 1, 0) * angles(-1.9198621771937625 - 0.10471975511965978 * sin((s + 0.3) * 2), 0, 3.141592653589793),
+                        RootJoint = cf(0, -2.45 - 0.05 * sin(s * 2), 0) * angles(0.03490658503988659 * sin(s * 2), 0, 3.141592653589793),
+                        RightHip = cf(1, -1, 0) * angles(1.3962634015954636 - 0.03490658503988659 * sin(s * 2), 1.3089969389957472, -0.9599310885968813),
+                        LeftHip = cf(-1, -1, 0) * angles(1.5707963267948966 - 0.03490658503988659 * sin(s * 2), -1.3089969389957472, 1.5707963267948966),
+                    }
+                end,
+                -- Y: lay down 2 (on its back, arms and legs spread a bit, not moving)
+                ["Lay down 2"] = function()
+                    return {
+                        RootJoint = RootC(Vector3.new(0, -2.5, 0), angles(math.pi / 2, 0, 0)),
+                        Neck = cf(0, 1, 0) * angles(0, rad(-20), 0) * ROOT_N,
+                        RightShoulder = ArmC(1, 0, rad(40)),
+                        LeftShoulder = ArmC(-1, 0, rad(40)),
+                        RightHip = LegC(1, angles(0, 0, rad(18))),
+                        LeftHip = LegC(-1, angles(0, 0, rad(-18))),
+                    }
+                end,
+            }
+
+            for ToolName, Pose in pairs(Poses) do
+                local Tool = Instance.new("Tool", Players.LocalPlayer.Backpack)
+                Tool.Name = ToolName
+                Tool.RequiresHandle = false
+                local Connection
+                Tool.Equipped:Connect(function()
+                    Dancing = true
+                    Humanoid.WalkSpeed = 0
+                    getgenv().Animator6DStop()
+                    if Connection then
+                        Connection:Disconnect()
+                    end
+                    Connection = RunService.RenderStepped:Connect(function(dt)
+                        local Alpha = math.clamp(dt * 12, 0, 1)
+                        for Name, C0 in pairs(Pose(os.clock())) do
+                            Joints[Name].C0 = Joints[Name].C0:Lerp(C0, Alpha)
+                        end
+                    end)
+                end)
+                Tool.Unequipped:Connect(function()
+                    if Connection then
+                        Connection:Disconnect()
+                        Connection = nil
+                    end
+                    for Name, C0 in pairs(Default) do
+                        Joints[Name].C0 = C0
+                    end
+                    Dancing = false
+                    CurrentAnim = nil
+                    Humanoid.WalkSpeed = 16
+                end)
+            end
+        end
+
+        Notify("loading")
+        Notify("made by Noctalia")
+        Notify("LOADING DEPENDS ON UR EXECUTOR")
+
+        wait(1)
+
+        wait(5)
+        Notify("Hi kilo!!! :3")
+        wait(5)
+    end)
+end)
